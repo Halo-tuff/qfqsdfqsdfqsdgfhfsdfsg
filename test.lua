@@ -3647,7 +3647,7 @@ do
     l.Padding = UDim.new(0,5)
 end
 
-local TAB_DEFS = { "All", "Favs", "Custom", "Binds", "States", "Speed", "Settings", "Testing" }
+local TAB_DEFS = { "All", "Favs", "Custom", "Binds", "States", "Speed", "Settings", "Testing", "Sneaking" }
 TabButtons = {}
 local activeTab = nil
 
@@ -3935,6 +3935,758 @@ do
     l:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         TestingPanel.CanvasSize = UDim2.new(0,0,0,l.AbsoluteContentSize.Y+16)
     end)
+
+SneakingPanel = Instance.new("ScrollingFrame"); SneakingPanel.Parent = body
+SneakingPanel.Name = "SneakingPanel"
+SneakingPanel.BackgroundColor3 = C.bg0; SneakingPanel.BackgroundTransparency = 0.5
+SneakingPanel.BorderSizePixel = 0
+SneakingPanel.Size = UDim2.new(1,-20,1,-112)
+SneakingPanel.Position = UDim2.new(0,10,0,104)
+SneakingPanel.ScrollBarThickness = 4; SneakingPanel.ScrollBarImageColor3 = C.accent
+SneakingPanel.ScrollBarImageTransparency = 0.5; SneakingPanel.ZIndex = 32
+SneakingPanel.CanvasSize = UDim2.new(0,0,0,0); SneakingPanel.Visible = false
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = SneakingPanel
+    local l = Instance.new("UIListLayout"); l.Parent = SneakingPanel
+    l.Padding = UDim.new(0,8); l.SortOrder = Enum.SortOrder.LayoutOrder
+    local p = Instance.new("UIPadding"); p.Parent = SneakingPanel
+    p.PaddingTop = UDim.new(0,8); p.PaddingLeft = UDim.new(0,8); p.PaddingRight = UDim.new(0,8); p.PaddingBottom = UDim.new(0,8)
+    l:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        SneakingPanel.CanvasSize = UDim2.new(0,0,0,l.AbsoluteContentSize.Y+16)
+    end)
+
+
+-- Sneak / Rise & Decline Toggle Frame
+sneakToggleFrame.Parent = SneakingPanel
+sneakToggleFrame.Size = UDim2.new(1,0,0,54); sneakToggleFrame.BackgroundColor3 = C.bg1
+sneakToggleFrame.BackgroundTransparency = 0.4; sneakToggleFrame.BorderSizePixel = 0
+sneakToggleFrame.LayoutOrder = 3
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = sneakToggleFrame
+    local s = Instance.new("UIStroke"); s.Color = C.border; s.Transparency = 0.7; s.Thickness = 1; s.Parent = sneakToggleFrame
+end
+local sneakToggleLbl = Instance.new("TextLabel", sneakToggleFrame)
+sneakToggleLbl.BackgroundTransparency = 1; sneakToggleLbl.Position = UDim2.new(0,10,0,6)
+sneakToggleLbl.Size = UDim2.new(1,-120,0,16); sneakToggleLbl.Font = Enum.Font.GothamBold
+sneakToggleLbl.Text = "Sneak / Rise & Decline"; sneakToggleLbl.TextColor3 = C.text; sneakToggleLbl.TextSize = 11
+sneakToggleLbl.TextXAlignment = Enum.TextXAlignment.Left; sneakToggleLbl.ZIndex = 33
+local sneakToggleSub = Instance.new("TextLabel", sneakToggleFrame)
+sneakToggleSub.BackgroundTransparency = 1; sneakToggleSub.Position = UDim2.new(0,10,0,24)
+sneakToggleSub.Size = UDim2.new(1,-120,0,24); sneakToggleSub.Font = Enum.Font.Gotham
+sneakToggleSub.Text = "Go under the map, height control, and rise/decline"; sneakToggleSub.TextColor3 = C.text3; sneakToggleSub.TextSize = 9
+sneakToggleSub.TextXAlignment = Enum.TextXAlignment.Left; sneakToggleSub.TextWrapped = true; sneakToggleSub.ZIndex = 33
+local sneakToggleBg = Instance.new("Frame", sneakToggleFrame)
+sneakToggleBg.Size = UDim2.new(0,44,0,22); sneakToggleBg.Position = UDim2.new(1,-54,0,16)
+sneakToggleBg.BackgroundColor3 = C.bg4; sneakToggleBg.BorderSizePixel = 0; sneakToggleBg.ZIndex = 33
+local stc = Instance.new("UICorner", sneakToggleBg); stc.CornerRadius = UDim.new(0,11)
+local sneakKnob = Instance.new("Frame", sneakToggleBg)
+sneakKnob.Size = UDim2.new(0,16,0,16); sneakKnob.Position = UDim2.new(0,3,0,3)
+sneakKnob.BackgroundColor3 = C.white; sneakKnob.BorderSizePixel = 0; sneakKnob.ZIndex = 34
+local stck = Instance.new("UICorner", sneakKnob); stck.CornerRadius = UDim.new(0,8)
+local sneakToggleBtn = Instance.new("TextButton", sneakToggleBg)
+
+
+-- ============================================
+-- SNEAK / RISE & DECLINE SYSTEM
+-- ============================================
+
+local SneakSystem = {
+    Enabled = false,
+    Gui = nil,
+    Conn = nil,
+    OffsetY = 0,
+    TargetOffsetY = 0,
+    Speed = 5, -- studs per second
+    State = "Idle", -- Idle, Rising, Declining, UnderMap
+    UnderMap = false,
+    BaseHRP = nil,
+    Keys = {
+        Up = Enum.KeyCode.Q,
+        Down = Enum.KeyCode.E,
+        SpeedUp = Enum.KeyCode.PageUp,
+        SpeedDown = Enum.KeyCode.PageDown,
+    },
+    Listening = nil,
+}
+
+local function UpdateSneakToggleVisual()
+    if SneakSystem.Enabled then
+        TweenService:Create(sneakToggleBg, TweenInfo.new(0.2), {BackgroundColor3 = C.green}):Play()
+        TweenService:Create(sneakKnob, TweenInfo.new(0.2), {Position = UDim2.new(1,-19,0,3)}):Play()
+    else
+        TweenService:Create(sneakToggleBg, TweenInfo.new(0.2), {BackgroundColor3 = C.bg4}):Play()
+        TweenService:Create(sneakKnob, TweenInfo.new(0.2), {Position = UDim2.new(0,3,0,3)}):Play()
+    end
+end
+
+local function GetSneakClone()
+    if not ReanimateAPI or not ReanimateAPI.get_clone then return nil end
+    return ReanimateAPI.get_clone(plr)
+end
+
+local function GetSneakRealChar()
+    if not ReanimateAPI or not ReanimateAPI.get_real_character then return nil end
+    return ReanimateAPI.get_real_character(plr)
+end
+
+local function SetSneakNoclip(model, state)
+    if not model then return end
+    for _, part in ipairs(model:GetDescendants()) do
+        if part:IsA("BasePart") then
+            pcall(function()
+                part.CanCollide = not state
+                if state then
+                    part.CanTouch = false
+                    part.CanQuery = false
+                end
+            end)
+        end
+    end
+end
+
+local function CreateSneakGui()
+    if SneakSystem.Gui and SneakSystem.Gui.Parent then
+        SneakSystem.Gui:Destroy()
+    end
+
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "HaloSneakGui"
+    sg.ResetOnSpawn = false
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    sg.IgnoreGuiInset = true
+    sg.Parent = PlayerGui
+    SneakSystem.Gui = sg
+
+    -- Main Frame
+    local mf = Instance.new("Frame")
+    mf.Name = "SneakMain"
+    mf.Parent = sg
+    mf.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+    mf.BackgroundTransparency = 0.02
+    mf.BorderSizePixel = 0
+    mf.AnchorPoint = Vector2.new(0.5, 0.5)
+    mf.Position = UDim2.new(0.5, 0, 0.5, 0)
+    mf.Size = UDim2.new(0, 340, 0, 420)
+    mf.Active = true
+    mf.ZIndex = 100
+    mf.ClipsDescendants = true
+    do
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 16); c.Parent = mf
+        local s = Instance.new("UIStroke"); s.Color = C.glassBorder; s.Transparency = 0.25; s.Thickness = 1.5; s.Parent = mf
+        local shadow = Instance.new("ImageLabel"); shadow.Name = "Shadow"
+        shadow.Parent = mf; shadow.BackgroundTransparency = 1
+        shadow.Image = "rbxassetid://131604521937076"
+        shadow.ImageColor3 = Color3.fromRGB(0,0,0)
+        shadow.ImageTransparency = 0.35
+        shadow.ScaleType = Enum.ScaleType.Slice
+        shadow.SliceCenter = Rect.new(50,50,50,50)
+        shadow.Size = UDim2.new(1,60,1,60)
+        shadow.Position = UDim2.new(0.5,0,0.5,0)
+        shadow.AnchorPoint = Vector2.new(0.5,0.5)
+        shadow.ZIndex = 99
+    end
+
+    -- Title Bar
+    local tb = Instance.new("Frame")
+    tb.Name = "TitleBar"; tb.Parent = mf
+    tb.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
+    tb.BackgroundTransparency = 0.1; tb.BorderSizePixel = 0
+    tb.Size = UDim2.new(1,0,0,42); tb.ZIndex = 101; tb.Active = false
+    do
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,16); c.Parent = tb
+        local t = Instance.new("TextLabel"); t.Parent = tb
+        t.BackgroundTransparency = 1; t.Position = UDim2.new(0,16,0,0)
+        t.Size = UDim2.new(1,-80,1,0); t.Font = Enum.Font.GothamBold
+        t.Text = "SNEAK"; t.TextColor3 = C.accent
+        t.TextSize = 15; t.TextXAlignment = Enum.TextXAlignment.Left; t.ZIndex = 102
+        -- Dot indicator
+        local dot = Instance.new("Frame"); dot.Parent = tb
+        dot.BackgroundColor3 = C.accent; dot.BorderSizePixel = 0
+        dot.Size = UDim2.new(0,6,0,6); dot.Position = UDim2.new(0,6,0.5,0)
+        dot.AnchorPoint = Vector2.new(0,0.5); dot.ZIndex = 103
+        Instance.new("UICorner", dot).CornerRadius = UDim.new(1,0)
+        -- Close button
+        local cb = Instance.new("TextButton"); cb.Parent = tb
+        cb.AnchorPoint = Vector2.new(1,0.5); cb.Position = UDim2.new(1,-10,0.5,0)
+        cb.Size = UDim2.new(0,14,0,14); cb.BackgroundColor3 = C.red
+        cb.BorderSizePixel = 0; cb.Font = Enum.Font.GothamBold
+        cb.Text = ""; cb.ZIndex = 102; cb.AutoButtonColor = false
+        Instance.new("UICorner", cb).CornerRadius = UDim.new(1,0)
+        cb.MouseButton1Click:Connect(function()
+            SneakSystem.Enabled = false
+            UpdateSneakToggleVisual()
+            if SneakSystem.Conn then SneakSystem.Conn:Disconnect(); SneakSystem.Conn = nil end
+            sg:Destroy()
+            SneakSystem.Gui = nil
+        end)
+        -- Minimize button
+        local mb = Instance.new("TextButton"); mb.Parent = tb
+        mb.AnchorPoint = Vector2.new(1,0.5); mb.Position = UDim2.new(1,-32,0.5,0)
+        mb.Size = UDim2.new(0,14,0,14); mb.BackgroundColor3 = C.yellow
+        mb.BorderSizePixel = 0; mb.Font = Enum.Font.GothamBold
+        mb.Text = ""; mb.ZIndex = 102; mb.AutoButtonColor = false
+        Instance.new("UICorner", mb).CornerRadius = UDim.new(1,0)
+        local minimized = false
+        local bodyRef = nil
+        mb.MouseButton1Click:Connect(function()
+            minimized = not minimized
+            if bodyRef then
+                bodyRef.Visible = not minimized
+                TweenService:Create(mf, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
+                    Size = minimized and UDim2.new(0, 340, 0, 42) or UDim2.new(0, 340, 0, 420)
+                }):Play()
+            end
+        end)
+    end
+
+    -- Body
+    local bd = Instance.new("Frame"); bd.Parent = mf
+    bd.BackgroundTransparency = 1; bd.Position = UDim2.new(0,0,0,42)
+    bd.Size = UDim2.new(1,0,1,-42); bd.ZIndex = 101
+    bodyRef = bd
+
+    -- Status Row
+    local statusRow = Instance.new("Frame"); statusRow.Parent = bd
+    statusRow.BackgroundTransparency = 1; statusRow.Size = UDim2.new(1,-24,0,20)
+    statusRow.Position = UDim2.new(0,12,0,10); statusRow.ZIndex = 102
+    local statusLbl = Instance.new("TextLabel"); statusLbl.Parent = statusRow
+    statusLbl.BackgroundTransparency = 1; statusLbl.Size = UDim2.new(0.5,0,1,0)
+    statusLbl.Font = Enum.Font.GothamBold; statusLbl.Text = "SNEAK STATUS"
+    statusLbl.TextColor3 = C.text3; statusLbl.TextSize = 10
+    statusLbl.TextXAlignment = Enum.TextXAlignment.Left; statusLbl.ZIndex = 103
+    local statusVal = Instance.new("TextLabel"); statusVal.Parent = statusRow
+    statusVal.BackgroundTransparency = 1; statusVal.Position = UDim2.new(0.5,0,0,0)
+    statusVal.Size = UDim2.new(0.5,0,1,0); statusVal.Font = Enum.Font.GothamBold
+    statusVal.Text = "• IDLE"; statusVal.TextColor3 = C.text3
+    statusVal.TextSize = 10; statusVal.TextXAlignment = Enum.TextXAlignment.Right; statusVal.ZIndex = 103
+
+    -- Button Row
+    local btnRow = Instance.new("Frame"); btnRow.Parent = bd
+    btnRow.BackgroundTransparency = 1; btnRow.Size = UDim2.new(1,-24,0,52)
+    btnRow.Position = UDim2.new(0,12,0,38); btnRow.ZIndex = 102
+
+    -- GO DOWN Button (metallic dark)
+    local downBtn = Instance.new("TextButton"); downBtn.Parent = btnRow
+    downBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    downBtn.BackgroundTransparency = 0.1; downBtn.BorderSizePixel = 0
+    downBtn.Size = UDim2.new(0.48, -4, 1, 0); downBtn.Position = UDim2.new(0, 0, 0, 0)
+    downBtn.Font = Enum.Font.GothamBold; downBtn.Text = "GO DOWN"
+    downBtn.TextColor3 = Color3.fromRGB(20, 20, 20); downBtn.TextSize = 13
+    downBtn.ZIndex = 103; downBtn.AutoButtonColor = false
+    do
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = downBtn
+        local g = Instance.new("UIGradient"); g.Parent = downBtn
+        g.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(200, 200, 200)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(140, 140, 140)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(90, 90, 90))
+        })
+        g.Rotation = 90
+    end
+
+    -- GO UP Button (metallic light)
+    local upBtn = Instance.new("TextButton"); upBtn.Parent = btnRow
+    upBtn.BackgroundColor3 = Color3.fromRGB(220, 220, 220)
+    upBtn.BackgroundTransparency = 0.1; upBtn.BorderSizePixel = 0
+    upBtn.Size = UDim2.new(0.48, -4, 1, 0); upBtn.Position = UDim2.new(0.52, 4, 0, 0)
+    upBtn.Font = Enum.Font.GothamBold; upBtn.Text = "GO UP"
+    upBtn.TextColor3 = Color3.fromRGB(20, 20, 20); upBtn.TextSize = 13
+    upBtn.ZIndex = 103; upBtn.AutoButtonColor = false
+    do
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = upBtn
+        local g = Instance.new("UIGradient"); g.Parent = upBtn
+        g.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(230, 230, 230)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 180, 180))
+        })
+        g.Rotation = 90
+    end
+
+    -- Hover effects for buttons
+    downBtn.MouseEnter:Connect(function()
+        TweenService:Create(downBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0}):Play()
+    end)
+    downBtn.MouseLeave:Connect(function()
+        TweenService:Create(downBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.1}):Play()
+    end)
+    upBtn.MouseEnter:Connect(function()
+        TweenService:Create(upBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0}):Play()
+    end)
+    upBtn.MouseLeave:Connect(function()
+        TweenService:Create(upBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.1}):Play()
+    end)
+
+    -- Speed / Transition Time Slider
+    local spdFrame = Instance.new("Frame"); spdFrame.Parent = bd
+    spdFrame.BackgroundTransparency = 1; spdFrame.Size = UDim2.new(1,-24,0,50)
+    spdFrame.Position = UDim2.new(0,12,0,100); spdFrame.ZIndex = 102
+    local spdLbl = Instance.new("TextLabel"); spdLbl.Parent = spdFrame
+    spdLbl.BackgroundTransparency = 1; spdLbl.Size = UDim2.new(0.5,0,0,16)
+    spdLbl.Font = Enum.Font.GothamBold; spdLbl.Text = "TRANSITION TIME"
+    spdLbl.TextColor3 = C.text3; spdLbl.TextSize = 10
+    spdLbl.TextXAlignment = Enum.TextXAlignment.Left; spdLbl.ZIndex = 103
+    local spdVal = Instance.new("TextLabel"); spdVal.Parent = spdFrame
+    spdVal.BackgroundTransparency = 1; spdVal.Position = UDim2.new(0.5,0,0,0)
+    spdVal.Size = UDim2.new(0.5,0,0,16); spdVal.Font = Enum.Font.GothamBold
+    spdVal.Text = string.format("%.1fs", 5 / SneakSystem.Speed); spdVal.TextColor3 = C.white
+    spdVal.TextSize = 10; spdVal.TextXAlignment = Enum.TextXAlignment.Right; spdVal.ZIndex = 103
+
+    local spdTrack = Instance.new("Frame"); spdTrack.Parent = spdFrame
+    spdTrack.BackgroundColor3 = Color3.fromRGB(30, 30, 30); spdTrack.BackgroundTransparency = 0.3
+    spdTrack.BorderSizePixel = 0; spdTrack.Position = UDim2.new(0,0,0,24)
+    spdTrack.Size = UDim2.new(1,0,0,8); spdTrack.ZIndex = 103
+    Instance.new("UICorner", spdTrack).CornerRadius = UDim.new(1,0)
+    local spdFill = Instance.new("Frame"); spdFill.Parent = spdTrack
+    spdFill.BackgroundColor3 = C.white; spdFill.BackgroundTransparency = 0.1
+    spdFill.BorderSizePixel = 0; spdFill.Size = UDim2.new(0.5,0,1,0)
+    Instance.new("UICorner", spdFill).CornerRadius = UDim.new(1,0)
+    local spdHandle = Instance.new("Frame"); spdHandle.Parent = spdTrack
+    spdHandle.AnchorPoint = Vector2.new(0.5,0.5)
+    spdHandle.BackgroundColor3 = C.white; spdHandle.BackgroundTransparency = 0
+    spdHandle.BorderSizePixel = 0; spdHandle.Position = UDim2.new(0.5,0,0.5,0)
+    spdHandle.Size = UDim2.new(0,14,0,14); spdHandle.ZIndex = 104
+    do
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1,0); c.Parent = spdHandle
+        local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(80,80,80); s.Thickness = 1; s.Parent = spdHandle
+    end
+
+    local function UpdateSpdVisual()
+        local pct = (SneakSystem.Speed - 1) / 19
+        spdFill.Size = UDim2.new(pct, 0, 1, 0)
+        spdHandle.Position = UDim2.new(pct, 0, 0.5, 0)
+        spdVal.Text = string.format("%.1fs", 5 / SneakSystem.Speed)
+    end
+    UpdateSpdVisual()
+
+    local spdDragging = false
+    spdTrack.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+            spdDragging = true
+            local pct = math.clamp((inp.Position.X - spdTrack.AbsolutePosition.X) / spdTrack.AbsoluteSize.X, 0, 1)
+            SneakSystem.Speed = 1 + pct * 19
+            UpdateSpdVisual()
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 and spdDragging then spdDragging = false end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if spdDragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
+            local pct = math.clamp((inp.Position.X - spdTrack.AbsolutePosition.X) / spdTrack.AbsoluteSize.X, 0, 1)
+            SneakSystem.Speed = 1 + pct * 19
+            UpdateSpdVisual()
+        end
+    end)
+
+    -- Keybinds Section
+    local kbHeader = Instance.new("TextLabel"); kbHeader.Parent = bd
+    kbHeader.BackgroundTransparency = 1; kbHeader.Size = UDim2.new(1,-24,0,14)
+    kbHeader.Position = UDim2.new(0,12,0,158); kbHeader.ZIndex = 102
+    kbHeader.Font = Enum.Font.GothamBold; kbHeader.Text = "KEYBINDS"
+    kbHeader.TextColor3 = C.text3; kbHeader.TextSize = 10
+    kbHeader.TextXAlignment = Enum.TextXAlignment.Left
+
+    local kbRow = Instance.new("Frame"); kbRow.Parent = bd
+    kbRow.BackgroundTransparency = 1; kbRow.Size = UDim2.new(1,-24,0,28)
+    kbRow.Position = UDim2.new(0,12,0,176); kbRow.ZIndex = 102
+
+    local function MakeKeybindBtn(text, keyCode, xPos)
+        local btn = Instance.new("TextButton"); btn.Parent = kbRow
+        btn.Position = UDim2.new(xPos, 0, 0, 0)
+        btn.Size = UDim2.new(0.3, -6, 1, 0)
+        btn.BackgroundColor3 = C.bg2; btn.BackgroundTransparency = 0.3
+        btn.BorderSizePixel = 0; btn.Font = Enum.Font.GothamBold
+        btn.Text = text .. ": [" .. keyCode.Name .. "]"
+        btn.TextColor3 = C.accent; btn.TextSize = 9; btn.ZIndex = 103
+        btn.AutoButtonColor = false
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+        btn.MouseEnter:Connect(function()
+            TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundTransparency = 0.1}):Play()
+        end)
+        btn.MouseLeave:Connect(function()
+            TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundTransparency = 0.3}):Play()
+        end)
+        return btn
+    end
+
+    local upKbBtn = MakeKeybindBtn("RISE", SneakSystem.Keys.Up, 0)
+    local downKbBtn = MakeKeybindBtn("DECLINE", SneakSystem.Keys.Down, 0.35)
+    local spdKbBtn = MakeKeybindBtn("SPEED", SneakSystem.Keys.SpeedUp, 0.7)
+
+    local function RefreshKbBtns()
+        upKbBtn.Text = "RISE: [" .. SneakSystem.Keys.Up.Name .. "]"
+        downKbBtn.Text = "DECLINE: [" .. SneakSystem.Keys.Down.Name .. "]"
+        spdKbBtn.Text = "SPEED: [" .. SneakSystem.Keys.SpeedUp.Name .. "]"
+    end
+
+    local function StartListening(targetBtn, keyName)
+        if SneakSystem.Listening then
+            SneakSystem.Listening.btn.Text = SneakSystem.Listening.originalText
+        end
+        SneakSystem.Listening = {btn = targetBtn, originalText = targetBtn.Text, key = keyName}
+        targetBtn.Text = "PRESS KEY..."
+        targetBtn.BackgroundColor3 = Color3.fromRGB(220, 120, 20)
+    end
+
+    upKbBtn.MouseButton1Click:Connect(function() StartListening(upKbBtn, "Up") end)
+    downKbBtn.MouseButton1Click:Connect(function() StartListening(downKbBtn, "Down") end)
+    spdKbBtn.MouseButton1Click:Connect(function() StartListening(spdKbBtn, "SpeedUp") end)
+
+    -- Under Map Toggle
+    local umFrame = Instance.new("Frame"); umFrame.Parent = bd
+    umFrame.BackgroundTransparency = 1; umFrame.Size = UDim2.new(1,-24,0,40)
+    umFrame.Position = UDim2.new(0,12,0,214); umFrame.ZIndex = 102
+    local umLbl = Instance.new("TextLabel"); umLbl.Parent = umFrame
+    umLbl.BackgroundTransparency = 1; umLbl.Size = UDim2.new(0.6,0,1,0)
+    umLbl.Font = Enum.Font.GothamBold; umLbl.Text = "UNDER MAP"
+    umLbl.TextColor3 = C.text; umLbl.TextSize = 11
+    umLbl.TextXAlignment = Enum.TextXAlignment.Left; umLbl.ZIndex = 103
+    local umSub = Instance.new("TextLabel"); umSub.Parent = umFrame
+    umSub.BackgroundTransparency = 1; umSub.Position = UDim2.new(0,0,0.5,0)
+    umSub.Size = UDim2.new(0.6,0,0.5,0); umSub.Font = Enum.Font.Gotham
+    umSub.Text = "Noclip & walk below terrain"; umSub.TextColor3 = C.text3
+    umSub.TextSize = 9; umSub.TextXAlignment = Enum.TextXAlignment.Left; umSub.ZIndex = 103
+    local umToggleBg = Instance.new("Frame", umFrame)
+    umToggleBg.Size = UDim2.new(0,44,0,22); umToggleBg.Position = UDim2.new(1,-44,0.5,-11)
+    umToggleBg.BackgroundColor3 = C.bg4; umToggleBg.BorderSizePixel = 0; umToggleBg.ZIndex = 103
+    Instance.new("UICorner", umToggleBg).CornerRadius = UDim.new(0,11)
+    local umKnob = Instance.new("Frame", umToggleBg)
+    umKnob.Size = UDim2.new(0,16,0,16); umKnob.Position = UDim2.new(0,3,0,3)
+    umKnob.BackgroundColor3 = C.white; umKnob.BorderSizePixel = 0; umKnob.ZIndex = 104
+    Instance.new("UICorner", umKnob).CornerRadius = UDim.new(0,8)
+    local umToggleBtn = Instance.new("TextButton", umToggleBg)
+    umToggleBtn.Size = UDim2.new(1,0,1,0); umToggleBtn.BackgroundTransparency = 1; umToggleBtn.Text = ""; umToggleBtn.ZIndex = 105
+
+    local function UpdateUMVisual()
+        if SneakSystem.UnderMap then
+            TweenService:Create(umToggleBg, TweenInfo.new(0.2), {BackgroundColor3 = C.green}):Play()
+            TweenService:Create(umKnob, TweenInfo.new(0.2), {Position = UDim2.new(1,-19,0,3)}):Play()
+        else
+            TweenService:Create(umToggleBg, TweenInfo.new(0.2), {BackgroundColor3 = C.bg4}):Play()
+            TweenService:Create(umKnob, TweenInfo.new(0.2), {Position = UDim2.new(0,3,0,3)}):Play()
+        end
+    end
+
+    umToggleBtn.MouseButton1Click:Connect(function()
+        SneakSystem.UnderMap = not SneakSystem.UnderMap
+        UpdateUMVisual()
+        if SneakSystem.UnderMap then
+            SneakSystem.TargetOffsetY = -150
+            SneakSystem.State = "UnderMap"
+            statusVal.Text = "• UNDER MAP"; statusVal.TextColor3 = C.green
+            Notify("Under Map Enabled", "Walking below terrain...", 2)
+        else
+            SneakSystem.TargetOffsetY = 0
+            SneakSystem.State = "Idle"
+            statusVal.Text = "• IDLE"; statusVal.TextColor3 = C.text3
+            Notify("Under Map Disabled", "Returning to surface...", 2)
+        end
+    end)
+
+    -- Height Display
+    local htFrame = Instance.new("Frame"); htFrame.Parent = bd
+    htFrame.BackgroundColor3 = C.bg2; htFrame.BackgroundTransparency = 0.4
+    htFrame.BorderSizePixel = 0; htFrame.Size = UDim2.new(1,-24,0,36)
+    htFrame.Position = UDim2.new(0,12,0,264); htFrame.ZIndex = 102
+    Instance.new("UICorner", htFrame).CornerRadius = UDim.new(0, 8)
+    local htLbl = Instance.new("TextLabel"); htLbl.Parent = htFrame
+    htLbl.BackgroundTransparency = 1; htLbl.Size = UDim2.new(0.5,0,1,0)
+    htLbl.Position = UDim2.new(0,10,0,0); htLbl.Font = Enum.Font.GothamBold
+    htLbl.Text = "HEIGHT OFFSET"; htLbl.TextColor3 = C.text3
+    htLbl.TextSize = 10; htLbl.TextXAlignment = Enum.TextXAlignment.Left; htLbl.ZIndex = 103
+    local htVal = Instance.new("TextLabel"); htVal.Parent = htFrame
+    htVal.BackgroundTransparency = 1; htVal.Size = UDim2.new(0.5,-10,1,0)
+    htVal.Position = UDim2.new(0.5,0,0,0); htVal.Font = Enum.Font.GothamBold
+    htVal.Text = "0.0 studs"; htVal.TextColor3 = C.accent
+    htVal.TextSize = 11; htVal.TextXAlignment = Enum.TextXAlignment.Right; htVal.ZIndex = 103
+
+    -- Stop Button
+    local stopBtn = Instance.new("TextButton"); stopBtn.Parent = bd
+    stopBtn.BackgroundColor3 = C.red; stopBtn.BackgroundTransparency = 0.3
+    stopBtn.BorderSizePixel = 0; stopBtn.Size = UDim2.new(1,-24,0,32)
+    stopBtn.Position = UDim2.new(0,12,0,310); stopBtn.Font = Enum.Font.GothamBold
+    stopBtn.Text = "STOP / HOLD POSITION"; stopBtn.TextColor3 = C.white
+    stopBtn.TextSize = 12; stopBtn.ZIndex = 103; stopBtn.AutoButtonColor = false
+    Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0, 8)
+    stopBtn.MouseEnter:Connect(function()
+        TweenService:Create(stopBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0.1}):Play()
+    end)
+    stopBtn.MouseLeave:Connect(function()
+        TweenService:Create(stopBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0.3}):Play()
+    end)
+    stopBtn.MouseButton1Click:Connect(function()
+        SneakSystem.State = "Idle"
+        SneakSystem.TargetOffsetY = SneakSystem.OffsetY
+        statusVal.Text = "• IDLE"; statusVal.TextColor3 = C.text3
+        Notify("Height held at " .. string.format("%.1f", SneakSystem.OffsetY) .. " studs", 2)
+    end)
+
+    -- Instructions
+    local instr = Instance.new("TextLabel"); instr.Parent = bd
+    instr.BackgroundTransparency = 1; instr.Size = UDim2.new(1,-24,0,40)
+    instr.Position = UDim2.new(0,12,0,352); instr.ZIndex = 102
+    instr.Font = Enum.Font.Gotham; instr.Text = "Hold Rise/Decline to move.\nClick Stop to freeze at current height. Emotes continue while moving."
+    instr.TextColor3 = C.text3; instr.TextSize = 9; instr.TextWrapped = true
+    instr.TextXAlignment = Enum.TextXAlignment.Left; instr.ZIndex = 103
+
+    -- Button logic
+    downBtn.MouseButton1Down:Connect(function()
+        if SneakSystem.UnderMap then
+            SneakSystem.UnderMap = false
+            UpdateUMVisual()
+        end
+        SneakSystem.State = "Declining"
+        statusVal.Text = "• DECLINING"; statusVal.TextColor3 = C.red
+    end)
+    downBtn.MouseButton1Up:Connect(function()
+        if SneakSystem.State == "Declining" then
+            SneakSystem.State = "Idle"
+            SneakSystem.TargetOffsetY = SneakSystem.OffsetY
+            statusVal.Text = "• IDLE"; statusVal.TextColor3 = C.text3
+        end
+    end)
+    upBtn.MouseButton1Down:Connect(function()
+        if SneakSystem.UnderMap then
+            SneakSystem.UnderMap = false
+            UpdateUMVisual()
+        end
+        SneakSystem.State = "Rising"
+        statusVal.Text = "• RISING"; statusVal.TextColor3 = C.green
+    end)
+    upBtn.MouseButton1Up:Connect(function()
+        if SneakSystem.State == "Rising" then
+            SneakSystem.State = "Idle"
+            SneakSystem.TargetOffsetY = SneakSystem.OffsetY
+            statusVal.Text = "• IDLE"; statusVal.TextColor3 = C.text3
+        end
+    end)
+
+    -- Dragging
+    do
+        local dragging = false
+        local dragInputStart
+        local startPos
+        tb.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                dragInputStart = input.Position
+                startPos = mf.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                    end
+                end)
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                local delta = input.Position - dragInputStart
+                mf.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end)
+    end
+
+    -- Main loop
+    if SneakSystem.Conn then SneakSystem.Conn:Disconnect(); SneakSystem.Conn = nil end
+    SneakSystem.Conn = RunService.RenderStepped:Connect(LPH_NO_VIRTUALIZE(function(dt)
+        if not SneakSystem.Enabled then return end
+        if not State.isReanimated then return end
+
+        local clone = GetSneakClone()
+        if not clone then return end
+        local hrp = clone:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        -- Update offset based on state
+        if SneakSystem.State == "Rising" then
+            SneakSystem.TargetOffsetY = SneakSystem.TargetOffsetY + SneakSystem.Speed * dt
+        elseif SneakSystem.State == "Declining" then
+            SneakSystem.TargetOffsetY = SneakSystem.TargetOffsetY - SneakSystem.Speed * dt
+        end
+
+        -- Clamp for safety
+        if not SneakSystem.UnderMap then
+            SneakSystem.TargetOffsetY = math.clamp(SneakSystem.TargetOffsetY, -500, 500)
+        end
+
+        -- Smooth lerp to target
+        SneakSystem.OffsetY = SneakSystem.OffsetY + (SneakSystem.TargetOffsetY - SneakSystem.OffsetY) * math.min(dt * 8, 1)
+
+        -- Apply offset
+        local baseCF = hrp.CFrame - Vector3.new(0, SneakSystem.OffsetY, 0)
+        local newCF = baseCF + Vector3.new(0, SneakSystem.OffsetY, 0)
+        -- Actually we just need to offset Y from the "natural" position
+        -- Since the clone is physics-driven, we need to be careful. Let's use a simpler approach:
+        -- Store the base position when sneak starts, then offset from there.
+        -- But for simplicity, we'll just add velocity or set CFrame directly.
+        -- Setting CFrame directly on RenderStepped works well for reanimated clones.
+
+        if SneakSystem.BaseHRP == nil then
+            SneakSystem.BaseHRP = hrp.CFrame
+        end
+
+        -- We can't simply set CFrame because the player is moving. Instead, we apply a vertical offset
+        -- by modifying the HRP CFrame each frame relative to where physics would put it.
+        -- The simplest robust way: subtract the offset from the current position, then re-add.
+        -- Actually, let's just maintain a vertical offset by directly setting CFrame.
+        -- The reanimate heartbeat will sync the real char to this.
+
+        local currentCF = hrp.CFrame
+        local _, _, _, r00, r01, r02, r10, r11, r12, r20, r21, r22 = currentCF:GetComponents()
+        local newPos = Vector3.new(currentCF.Position.X, currentCF.Position.Y + (SneakSystem.TargetOffsetY - SneakSystem.OffsetY), currentCF.Position.Z)
+        hrp.CFrame = CFrame.new(newPos.X, newPos.Y, newPos.Z, r00, r01, r02, r10, r11, r12, r20, r21, r22)
+        SneakSystem.OffsetY = SneakSystem.TargetOffsetY
+
+        -- Ensure noclip on clone
+        for _, part in ipairs(clone:GetDescendants()) do
+            if part:IsA("BasePart") then
+                pcall(function()
+                    part.CanCollide = false
+                    part.CanTouch = false
+                    part.CanQuery = false
+                end)
+            end
+        end
+
+        -- Update display
+        htVal.Text = string.format("%.1f studs", SneakSystem.OffsetY)
+    end))
+
+    -- Entrance animation
+    mf.Size = UDim2.new(0, 0, 0, 0)
+    TweenService:Create(mf, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 340, 0, 420)
+    }):Play()
+end
+
+-- Toggle handler
+sneakToggleBtn.MouseButton1Click:Connect(function()
+    SneakSystem.Enabled = not SneakSystem.Enabled
+    UpdateSneakToggleVisual()
+    if SneakSystem.Enabled then
+        if not State.isReanimated then
+            Notify("Sneak", "Please enable reanimation first!", 3)
+            SneakSystem.Enabled = false
+            UpdateSneakToggleVisual()
+            return
+        end
+        CreateSneakGui()
+        Notify("Sneak System Enabled", "Use the GUI or keybinds to rise/decline.", 3)
+    else
+        if SneakSystem.Conn then SneakSystem.Conn:Disconnect(); SneakSystem.Conn = nil end
+        if SneakSystem.Gui then SneakSystem.Gui:Destroy(); SneakSystem.Gui = nil end
+        SneakSystem.OffsetY = 0
+        SneakSystem.TargetOffsetY = 0
+        SneakSystem.State = "Idle"
+        SneakSystem.BaseHRP = nil
+        Notify("Sneak System Disabled", 2)
+    end
+end)
+
+-- Keybind handling for Sneak
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if not SneakSystem.Enabled then return end
+
+    -- Handle keybind listening
+    if SneakSystem.Listening then
+        if input.KeyCode == Enum.KeyCode.Escape then
+            SneakSystem.Listening.btn.Text = SneakSystem.Listening.originalText
+            SneakSystem.Listening.btn.BackgroundColor3 = C.bg2
+            SneakSystem.Listening = nil
+            return
+        end
+        if input.KeyCode ~= Enum.KeyCode.Unknown then
+            SneakSystem.Keys[SneakSystem.Listening.key] = input.KeyCode
+            SneakSystem.Listening.btn.Text = SneakSystem.Listening.originalText:gsub("%[.-%]", "[" .. input.KeyCode.Name .. "]")
+            SneakSystem.Listening.btn.BackgroundColor3 = C.bg2
+            SneakSystem.Listening = nil
+            Notify("Keybind set!", 1.5)
+        end
+        return
+    end
+
+    if input.KeyCode == SneakSystem.Keys.Up then
+        if SneakSystem.UnderMap then
+            SneakSystem.UnderMap = false
+            if SneakSystem.Gui then
+                -- Update visual (handled by connection if we had reference, but simplified)
+            end
+        end
+        SneakSystem.State = "Rising"
+        if SneakSystem.Gui then
+            local sv = SneakSystem.Gui:FindFirstChild("SneakMain", true)
+            if sv then
+                local sv2 = sv:FindFirstChild("SneakStatusVal", true)
+                if sv2 then sv2.Text = "• RISING"; sv2.TextColor3 = C.green end
+            end
+        end
+    elseif input.KeyCode == SneakSystem.Keys.Down then
+        if SneakSystem.UnderMap then
+            SneakSystem.UnderMap = false
+        end
+        SneakSystem.State = "Declining"
+        if SneakSystem.Gui then
+            local sv = SneakSystem.Gui:FindFirstChild("SneakMain", true)
+            if sv then
+                local sv2 = sv:FindFirstChild("SneakStatusVal", true)
+                if sv2 then sv2.Text = "• DECLINING"; sv2.TextColor3 = C.red end
+            end
+        end
+    elseif input.KeyCode == SneakSystem.Keys.SpeedUp then
+        SneakSystem.Speed = math.min(SneakSystem.Speed + 2, 20)
+        if SneakSystem.Gui then
+            -- Update slider visual if needed
+        end
+        Notify("Sneak Speed: " .. string.format("%.1f", SneakSystem.Speed), 1.5)
+    elseif input.KeyCode == SneakSystem.Keys.SpeedDown then
+        SneakSystem.Speed = math.max(SneakSystem.Speed - 2, 1)
+        Notify("Sneak Speed: " .. string.format("%.1f", SneakSystem.Speed), 1.5)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gp)
+    if gp then return end
+    if not SneakSystem.Enabled then return end
+    if input.KeyCode == SneakSystem.Keys.Up and SneakSystem.State == "Rising" then
+        SneakSystem.State = "Idle"
+        SneakSystem.TargetOffsetY = SneakSystem.OffsetY
+    elseif input.KeyCode == SneakSystem.Keys.Down and SneakSystem.State == "Declining" then
+        SneakSystem.State = "Idle"
+        SneakSystem.TargetOffsetY = SneakSystem.OffsetY
+    end
+end)
+
+-- Cleanup on character death / reanim disable
+plr.CharacterRemoving:Connect(function()
+    if SneakSystem.Enabled then
+        SneakSystem.Enabled = false
+        UpdateSneakToggleVisual()
+        if SneakSystem.Conn then SneakSystem.Conn:Disconnect(); SneakSystem.Conn = nil end
+        if SneakSystem.Gui then SneakSystem.Gui:Destroy(); SneakSystem.Gui = nil end
+        SneakSystem.OffsetY = 0
+        SneakSystem.TargetOffsetY = 0
+        SneakSystem.State = "Idle"
+        SneakSystem.BaseHRP = nil
+    end
+end
+
+-- Sneaking Header
+local sneakHeader = Instance.new("TextLabel"); sneakHeader.Parent = SneakingPanel
+sneakHeader.BackgroundTransparency = 1; sneakHeader.Size = UDim2.new(1,0,0,18)
+sneakHeader.Font = Enum.Font.GothamBold; sneakHeader.TextSize = 12
+sneakHeader.Text = "Sneak / Rise & Decline"; sneakHeader.TextColor3 = C.accent
+sneakHeader.TextXAlignment = Enum.TextXAlignment.Left; sneakHeader.ZIndex = 33
+
+-- Sneak Description
+local sneakDesc = Instance.new("TextLabel"); sneakDesc.Parent = SneakingPanel
+sneakDesc.BackgroundTransparency = 1; sneakDesc.Size = UDim2.new(1,0,0,30)
+sneakDesc.Font = Enum.Font.Gotham; sneakDesc.TextSize = 9
+sneakDesc.Text = "Go under the map, control height, and rise/decline with keybinds or the GUI."
+sneakDesc.TextColor3 = C.text3; sneakDesc.TextWrapped = true
+sneakDesc.TextXAlignment = Enum.TextXAlignment.Left; sneakDesc.ZIndex = 33
+
 end
 
 -- Testing Header
@@ -4136,6 +4888,396 @@ stressToggleBtn.MouseButton1Click:Connect(function()
     updateStressState()
 end)
 
+
+
+sneakToggleBtn.Size = UDim2.new(1,0,1,0); sneakToggleBtn.BackgroundTransparency = 1; sneakToggleBtn.Text = ""; sneakToggleBtn.ZIndex = 35
+-- ============================================
+-- ANIMATION COPIER (Testing Tab)
+-- ============================================
+
+local animCopierFrame = Instance.new("Frame"); animCopierFrame.Parent = TestingPanel
+animCopierFrame.Size = UDim2.new(1,0,0,280)
+animCopierFrame.BackgroundColor3 = C.bg1
+animCopierFrame.BackgroundTransparency = 0.4
+animCopierFrame.BorderSizePixel = 0
+animCopierFrame.LayoutOrder = 6
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,7); c.Parent = animCopierFrame
+    local s = Instance.new("UIStroke"); s.Color = C.border; s.Transparency = 0.7; s.Thickness = 1; s.Parent = animCopierFrame
+end
+
+local acLbl = Instance.new("TextLabel", animCopierFrame)
+acLbl.BackgroundTransparency = 1; acLbl.Position = UDim2.new(0,10,0,6)
+acLbl.Size = UDim2.new(1,-120,0,16); acLbl.Font = Enum.Font.GothamBold
+acLbl.Text = "Animation Copier"; acLbl.TextColor3 = C.accent; acLbl.TextSize = 11
+acLbl.TextXAlignment = Enum.TextXAlignment.Left; acLbl.ZIndex = 33
+
+local acSub = Instance.new("TextLabel", animCopierFrame)
+acSub.BackgroundTransparency = 1; acSub.Position = UDim2.new(0,10,0,22)
+acSub.Size = UDim2.new(1,-120,0,24); acSub.Font = Enum.Font.Gotham
+acSub.Text = "Mirror target player\'s exact pose & position"; acSub.TextColor3 = C.text3
+acSub.TextSize = 9; acSub.TextXAlignment = Enum.TextXAlignment.Left; acSub.TextWrapped = true; acSub.ZIndex = 33
+
+local acToggleBg = Instance.new("Frame", animCopierFrame)
+acToggleBg.Size = UDim2.new(0,44,0,22); acToggleBg.Position = UDim2.new(1,-54,0,12)
+acToggleBg.BackgroundColor3 = C.bg4; acToggleBg.BorderSizePixel = 0; acToggleBg.ZIndex = 33
+local acc = Instance.new("UICorner", acToggleBg); acc.CornerRadius = UDim.new(0,11)
+local acKnob = Instance.new("Frame", acToggleBg)
+acKnob.Size = UDim2.new(0,16,0,16); acKnob.Position = UDim2.new(0,3,0,3)
+acKnob.BackgroundColor3 = C.white; acKnob.BorderSizePixel = 0; acKnob.ZIndex = 34
+local acck = Instance.new("UICorner", acKnob); acck.CornerRadius = UDim.new(0,8)
+local acToggleBtn = Instance.new("TextButton", acToggleBg)
+acToggleBtn.Size = UDim2.new(1,0,1,0); acToggleBtn.BackgroundTransparency = 1; acToggleBtn.Text = ""; acToggleBtn.ZIndex = 35
+
+-- Search box
+local acSearchBox = Instance.new("TextBox", animCopierFrame)
+acSearchBox.BackgroundColor3 = C.bg2; acSearchBox.BackgroundTransparency = 0.3
+acSearchBox.BorderSizePixel = 0; acSearchBox.Position = UDim2.new(0,10,0,50)
+acSearchBox.Size = UDim2.new(1,-20,0,26); acSearchBox.ZIndex = 33
+acSearchBox.Font = Enum.Font.GothamMedium; acSearchBox.PlaceholderText = "Search player..."
+acSearchBox.PlaceholderColor3 = C.text3; acSearchBox.Text = ""
+acSearchBox.TextColor3 = C.text; acSearchBox.TextSize = 11
+acSearchBox.ClearTextOnFocus = false
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,6); c.Parent = acSearchBox
+    local p = Instance.new("UIPadding"); p.PaddingLeft = UDim.new(0,10); p.Parent = acSearchBox
+    local s = Instance.new("UIStroke"); s.Color = C.border; s.Transparency = 0.7; s.Thickness = 1; s.Parent = acSearchBox
+end
+
+-- Player list
+local acPlayerList = Instance.new("ScrollingFrame", animCopierFrame)
+acPlayerList.BackgroundColor3 = C.bg0; acPlayerList.BackgroundTransparency = 0.5
+acPlayerList.BorderSizePixel = 0; acPlayerList.Position = UDim2.new(0,10,0,80)
+acPlayerList.Size = UDim2.new(1,-20,0,80); acPlayerList.ZIndex = 33
+acPlayerList.ScrollBarThickness = 3; acPlayerList.ScrollBarImageColor3 = C.accent
+acPlayerList.ScrollBarImageTransparency = 0.5; acPlayerList.CanvasSize = UDim2.new(0,0,0,0)
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,6); c.Parent = acPlayerList end
+local acListLayout = Instance.new("UIListLayout", acPlayerList)
+acListLayout.Padding = UDim.new(0,3); acListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+acListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    acPlayerList.CanvasSize = UDim2.new(0,0,0,acListLayout.AbsoluteContentSize.Y+6)
+end)
+
+-- Distance slider
+local acDistLbl = Instance.new("TextLabel", animCopierFrame)
+acDistLbl.BackgroundTransparency = 1; acDistLbl.Position = UDim2.new(0,10,0,166)
+acDistLbl.Size = UDim2.new(0,180,0,16); acDistLbl.Font = Enum.Font.GothamBold
+acDistLbl.Text = "Distance: 2.0 studs"; acDistLbl.TextColor3 = C.text2
+acDistLbl.TextSize = 9; acDistLbl.TextXAlignment = Enum.TextXAlignment.Left; acDistLbl.ZIndex = 33
+
+local acDistTrack = Instance.new("Frame", animCopierFrame)
+acDistTrack.BackgroundColor3 = C.bg2; acDistTrack.BackgroundTransparency = 0.3
+acDistTrack.BorderSizePixel = 0; acDistTrack.Position = UDim2.new(0,10,0,184)
+acDistTrack.Size = UDim2.new(1,-20,0,8); acDistTrack.ZIndex = 33
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1,0); c.Parent = acDistTrack
+    local s = Instance.new("UIStroke"); s.Color = C.border; s.Transparency = 0.7; s.Thickness = 1; s.Parent = acDistTrack
+end
+
+local acDistFill = Instance.new("Frame", acDistTrack)
+acDistFill.BackgroundColor3 = C.accent; acDistFill.BackgroundTransparency = 0.1
+acDistFill.BorderSizePixel = 0; acDistFill.Size = UDim2.new(0.345,0,1,0)
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1,0); c.Parent = acDistFill end
+
+local acDistHandle = Instance.new("Frame", acDistTrack)
+acDistHandle.AnchorPoint = Vector2.new(0.5,0.5)
+acDistHandle.BackgroundColor3 = C.accent; acDistHandle.BackgroundTransparency = 0
+acDistHandle.BorderSizePixel = 0; acDistHandle.Position = UDim2.new(0.345,0,0.5,0)
+acDistHandle.Size = UDim2.new(0,12,0,12)
+do
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(1,0); c.Parent = acDistHandle
+    local s = Instance.new("UIStroke"); s.Color = C.border; s.Transparency = 0.4; s.Thickness = 1; s.Parent = acDistHandle
+end
+
+-- Side selector
+local acSideLbl = Instance.new("TextLabel", animCopierFrame)
+acSideLbl.BackgroundTransparency = 1; acSideLbl.Position = UDim2.new(0,10,0,200)
+acSideLbl.Size = UDim2.new(0,40,0,14); acSideLbl.Font = Enum.Font.Gotham
+acSideLbl.Text = "Side:"; acSideLbl.TextColor3 = C.text3
+acSideLbl.TextSize = 9; acSideLbl.TextXAlignment = Enum.TextXAlignment.Left; acSideLbl.ZIndex = 33
+
+local acSideLeft = Instance.new("TextButton", animCopierFrame)
+acSideLeft.Position = UDim2.new(0,45,0,200); acSideLeft.Size = UDim2.new(0,40,0,16)
+acSideLeft.BackgroundColor3 = C.accent; acSideLeft.BackgroundTransparency = 0.1
+acSideLeft.BorderSizePixel = 0; acSideLeft.Font = Enum.Font.GothamBold
+acSideLeft.Text = "Left"; acSideLeft.TextColor3 = Color3.fromRGB(0,0,0)
+acSideLeft.TextSize = 8; acSideLeft.ZIndex = 33; acSideLeft.AutoButtonColor = false
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,4); c.Parent = acSideLeft end
+
+local acSideRight = Instance.new("TextButton", animCopierFrame)
+acSideRight.Position = UDim2.new(0,89,0,200); acSideRight.Size = UDim2.new(0,40,0,16)
+acSideRight.BackgroundColor3 = C.bg2; acSideRight.BackgroundTransparency = 0.3
+acSideRight.BorderSizePixel = 0; acSideRight.Font = Enum.Font.GothamBold
+acSideRight.Text = "Right"; acSideRight.TextColor3 = C.text2
+acSideRight.TextSize = 8; acSideRight.ZIndex = 33; acSideRight.AutoButtonColor = false
+do local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,4); c.Parent = acSideRight end
+
+-- Status label
+local acStatus = Instance.new("TextLabel", animCopierFrame)
+acStatus.BackgroundTransparency = 1; acStatus.Position = UDim2.new(0,10,0,222)
+acStatus.Size = UDim2.new(1,-20,0,28); acStatus.Font = Enum.Font.Gotham
+acStatus.Text = "OFF - Select a player and toggle ON"; acStatus.TextColor3 = C.text3
+acStatus.TextSize = 9; acStatus.TextXAlignment = Enum.TextXAlignment.Left
+acStatus.TextWrapped = true; acStatus.ZIndex = 33
+
+local acNoclipLbl = Instance.new("TextLabel", animCopierFrame)
+acNoclipLbl.BackgroundTransparency = 1; acNoclipLbl.Position = UDim2.new(0,10,0,252)
+acNoclipLbl.Size = UDim2.new(1,-20,0,14); acNoclipLbl.Font = Enum.Font.Gotham
+acNoclipLbl.Text = "Noclip: Auto-enabled when copying"; acNoclipLbl.TextColor3 = C.green
+acNoclipLbl.TextSize = 9; acNoclipLbl.TextXAlignment = Enum.TextXAlignment.Left; acNoclipLbl.ZIndex = 33
+
+-- ============================================
+-- ANIMATION COPIER LOGIC
+-- ============================================
+local acEnabled = false
+local acSelectedPlayer = nil
+local acDistance = 2.0
+local acSide = 1
+local acConn = nil
+local acDragging = false
+local acSavedStates = {}
+
+local function acUpdatePlayerList(term)
+    for _, c in ipairs(acPlayerList:GetChildren()) do
+        if c:IsA("TextButton") then c:Destroy() end
+    end
+    term = (term or ""):lower()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= plr then
+            local name = p.Name .. " (@" .. p.DisplayName .. ")"
+            if term == "" or name:lower():find(term, 1, true) then
+                local btn = Instance.new("TextButton"); btn.Parent = acPlayerList
+                btn.BackgroundColor3 = C.bg2; btn.BackgroundTransparency = 0.5
+                btn.BorderSizePixel = 0; btn.Size = UDim2.new(1,0,0,26); btn.ZIndex = 34
+                btn.Font = Enum.Font.GothamMedium; btn.Text = name
+                btn.TextColor3 = C.text2; btn.TextSize = 10
+                btn.TextXAlignment = Enum.TextXAlignment.Left; btn.AutoButtonColor = false
+                btn.TextTruncate = Enum.TextTruncate.AtEnd
+                do
+                    local c2 = Instance.new("UICorner"); c2.CornerRadius = UDim.new(0,5); c2.Parent = btn
+                    local p2 = Instance.new("UIPadding"); p2.PaddingLeft = UDim.new(0,8); p2.Parent = btn
+                end
+                btn.MouseEnter:Connect(function()
+                    TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundTransparency = 0.3}):Play()
+                end)
+                btn.MouseLeave:Connect(function()
+                    TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundTransparency = 0.5}):Play()
+                end)
+                btn.MouseButton1Click:Connect(function()
+                    acSelectedPlayer = p
+                    acStatus.Text = "Selected: " .. p.Name .. " | Dist: " .. string.format("%.1f", acDistance) .. " studs"
+                    acStatus.TextColor3 = C.accent
+                    for _, c2 in ipairs(acPlayerList:GetChildren()) do
+                        if c2:IsA("TextButton") then
+                            c2.BackgroundColor3 = (c2 == btn) and C.accent or C.bg2
+                            c2.TextColor3 = (c2 == btn) and Color3.fromRGB(0,0,0) or C.text2
+                        end
+                    end
+                    if acEnabled then
+                        acStatus.Text = "COPYING " .. p.Name .. " | Dist: " .. string.format("%.1f", acDistance) .. " studs"
+                        acStatus.TextColor3 = C.green
+                    end
+                end)
+            end
+        end
+    end
+end
+
+local function acSetDistance(val)
+    acDistance = math.clamp(math.floor(val * 10 + 0.5) / 10, 0.1, 6.0)
+    local pct = (acDistance - 0.1) / 5.9
+    acDistFill.Size = UDim2.new(pct, 0, 1, 0)
+    acDistHandle.Position = UDim2.new(pct, 0, 0.5, 0)
+    acDistLbl.Text = "Distance: " .. string.format("%.1f", acDistance) .. " studs"
+    if acEnabled and acSelectedPlayer then
+        acStatus.Text = "COPYING " .. acSelectedPlayer.Name .. " | Dist: " .. string.format("%.1f", acDistance) .. " studs"
+    end
+end
+acSetDistance(2.0)
+
+acSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    acUpdatePlayerList(acSearchBox.Text)
+end)
+Players.PlayerAdded:Connect(function() task.wait(0.1); acUpdatePlayerList(acSearchBox.Text) end)
+Players.PlayerRemoving:Connect(function() task.wait(0.1); acUpdatePlayerList(acSearchBox.Text) end)
+
+acDistTrack.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        acDragging = true
+        local pct = math.clamp((inp.Position.X - acDistTrack.AbsolutePosition.X) / acDistTrack.AbsoluteSize.X, 0, 1)
+        acSetDistance(0.1 + pct * 5.9)
+    end
+end)
+UserInputService.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 and acDragging then acDragging = false end
+end)
+UserInputService.InputChanged:Connect(function(inp)
+    if acDragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
+        local pct = math.clamp((inp.Position.X - acDistTrack.AbsolutePosition.X) / acDistTrack.AbsoluteSize.X, 0, 1)
+        acSetDistance(0.1 + pct * 5.9)
+    end
+end)
+
+acSideLeft.MouseButton1Click:Connect(function()
+    acSide = -1
+    acSideLeft.BackgroundColor3 = C.accent; acSideLeft.TextColor3 = Color3.fromRGB(0,0,0)
+    acSideRight.BackgroundColor3 = C.bg2; acSideRight.TextColor3 = C.text2
+end)
+acSideRight.MouseButton1Click:Connect(function()
+    acSide = 1
+    acSideRight.BackgroundColor3 = C.accent; acSideRight.TextColor3 = Color3.fromRGB(0,0,0)
+    acSideLeft.BackgroundColor3 = C.bg2; acSideLeft.TextColor3 = C.text2
+end)
+
+local function acFreezeClone(clone)
+    if not clone then return end
+    acSavedStates = {}
+    for _, part in ipairs(clone:GetDescendants()) do
+        if part:IsA("BasePart") then
+            acSavedStates[part] = {
+                Anchored = part.Anchored,
+                CanCollide = part.CanCollide,
+                CanQuery = part.CanQuery,
+            }
+            part.Anchored = true
+            part.CanCollide = false
+            part.CanQuery = false
+        end
+    end
+    local hum = clone:FindFirstChildOfClass("Humanoid")
+    if hum then
+        acSavedStates.Humanoid = {
+            WalkSpeed = hum.WalkSpeed,
+            JumpPower = hum.JumpPower,
+            AutoRotate = hum.AutoRotate,
+        }
+        hum.WalkSpeed = 0
+        hum.JumpPower = 0
+        hum.AutoRotate = false
+        local animator = hum:FindFirstChildOfClass("Animator")
+        if animator then
+            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                pcall(function() track:Stop(0) end)
+            end
+        end
+    end
+    local animate = clone:FindFirstChild("Animate")
+    if animate then
+        acSavedStates.Animate = { Enabled = animate.Enabled }
+        animate.Enabled = false
+    end
+    pcall(function() ReanimateAPI.stop_animation() end)
+end
+
+local function acUnfreezeClone(clone)
+    if not clone then return end
+    for part, state in pairs(acSavedStates) do
+        if typeof(part) == "Instance" and part.Parent then
+            if part:IsA("BasePart") then
+                pcall(function() part.Anchored = state.Anchored end)
+                pcall(function() part.CanCollide = state.CanCollide end)
+                pcall(function() part.CanQuery = state.CanQuery end)
+            end
+        end
+    end
+    local hum = clone:FindFirstChildOfClass("Humanoid")
+    if hum and acSavedStates.Humanoid then
+        pcall(function() hum.WalkSpeed = acSavedStates.Humanoid.WalkSpeed end)
+        pcall(function() hum.JumpPower = acSavedStates.Humanoid.JumpPower end)
+        pcall(function() hum.AutoRotate = acSavedStates.Humanoid.AutoRotate end)
+    end
+    local animate = clone:FindFirstChild("Animate")
+    if animate and acSavedStates.Animate then
+        pcall(function() animate.Enabled = acSavedStates.Animate.Enabled end)
+    end
+    acSavedStates = {}
+end
+
+local function acStartCopying()
+    if acConn then acConn:Disconnect(); acConn = nil end
+
+    local clone = ReanimateAPI and ReanimateAPI.get_clone and ReanimateAPI.get_clone(plr)
+    acFreezeClone(clone)
+
+    acConn = RunService.RenderStepped:Connect(function()
+        if not acEnabled then return end
+        if not acSelectedPlayer then return end
+
+        -- Auto-enable reanim if needed
+        if not State.isReanimated then
+            pcall(function() _G._HaloDoReanimToggle() end)
+            return
+        end
+
+        local targetChar = acSelectedPlayer.Character
+        clone = ReanimateAPI and ReanimateAPI.get_clone and ReanimateAPI.get_clone(plr)
+        if not targetChar or not clone then
+            acStatus.Text = "Target or clone missing..."
+            acStatus.TextColor3 = C.yellow
+            return
+        end
+
+        local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+        if not targetHRP then
+            acStatus.Text = "Target has no HRP..."
+            acStatus.TextColor3 = C.yellow
+            return
+        end
+
+        -- Compute world-space offset from target's right vector
+        local rightVec = targetHRP.CFrame.RightVector
+        if rightVec.Magnitude > 0.001 then rightVec = rightVec.Unit end
+        local offsetVec = rightVec * (acDistance * acSide)
+
+        -- Copy exact pose: position + rotation, shifted by offset
+        pcall(function()
+            for _, targetPart in ipairs(targetChar:GetDescendants()) do
+                if targetPart:IsA("BasePart") then
+                    local clonePart = clone:FindFirstChild(targetPart.Name, true)
+                    if clonePart and clonePart:IsA("BasePart") then
+                        clonePart.CFrame = targetPart.CFrame + offsetVec
+                    end
+                end
+            end
+        end)
+    end)
+end
+
+local function acStopCopying()
+    if acConn then acConn:Disconnect(); acConn = nil end
+    local clone = ReanimateAPI and ReanimateAPI.get_clone and ReanimateAPI.get_clone(plr)
+    acUnfreezeClone(clone)
+    acStatus.Text = "OFF - Select a player and toggle ON"
+    acStatus.TextColor3 = C.text3
+end
+
+local function acUpdateToggle()
+    if acEnabled then
+        TweenService:Create(acToggleBg, TweenInfo.new(0.2), {BackgroundColor3 = C.green}):Play()
+        TweenService:Create(acKnob, TweenInfo.new(0.2), {Position = UDim2.new(1,-19,0,3)}):Play()
+        if acSelectedPlayer then
+            acStatus.Text = "COPYING " .. acSelectedPlayer.Name .. " | Dist: " .. string.format("%.1f", acDistance) .. " studs"
+            acStatus.TextColor3 = C.green
+            acStartCopying()
+        else
+            acStatus.Text = "ON - Select a player from the list above"
+            acStatus.TextColor3 = C.yellow
+        end
+    else
+        TweenService:Create(acToggleBg, TweenInfo.new(0.2), {BackgroundColor3 = C.bg4}):Play()
+        TweenService:Create(acKnob, TweenInfo.new(0.2), {Position = UDim2.new(0,3,0,3)}):Play()
+        acStopCopying()
+    end
+end
+
+acToggleBtn.MouseButton1Click:Connect(function()
+    acEnabled = not acEnabled
+    acUpdateToggle()
+end)
+
+-- Refresh player list on startup
+acUpdatePlayerList("")
+
 -- Live diagnostics update loop
 local lastTestUpdate = 0
 RunService.RenderStepped:Connect(function()
@@ -4173,6 +5315,9 @@ RunService.RenderStepped:Connect(function()
         cloneLbl.TextColor3 = C.text3
         cloneSub.Text = "Parts: 0 | Bones: 0 | Active Animation: None"
     end
+end)
+
+
 end)
 
 StatesPanel.Parent = body
@@ -6847,7 +7992,7 @@ function SwitchTab(tabName)
         SettingsPanel.Visible = true
     end
     
-    local noSearch = (tabName == "Custom" or tabName == "Settings" or tabName == "States" or tabName == "Speed" or tabName == "Binds" or tabName == "Testing")
+    local noSearch = (tabName == "Custom" or tabName == "Settings" or tabName == "States" or tabName == "Speed" or tabName == "Binds" or tabName == "Testing" or tabName == "Sneaking")
     SearchBox.Visible = not noSearch
     hintLbl.Visible   = not noSearch
     local listY = noSearch and 104 or 148
@@ -6856,12 +8001,14 @@ function SwitchTab(tabName)
     BindsPanel.Position    = UDim2.new(0,10,0,listY)
     StatesPanel.Position   = UDim2.new(0,10,0,listY)
     SettingsPanel.Position = UDim2.new(0,10,0,listY)
+    SneakingPanel.Position = UDim2.new(0,10,0,listY)
     SpeedPanel.Position    = UDim2.new(0,10,0,listY)
     AnimListFrame.Size = UDim2.new(1,-20,1, noSearch and -112 or -156)
     CustomPanel.Size   = UDim2.new(1,-20,1, noSearch and -112 or -156)
     BindsPanel.Size    = UDim2.new(1,-20,1, noSearch and -112 or -156)
     StatesPanel.Size   = UDim2.new(1,-20,1, noSearch and -112 or -156)
     SettingsPanel.Size = UDim2.new(1,-20,1, noSearch and -112 or -156)
+    SneakingPanel.Size   = UDim2.new(1,-20,1, noSearch and -112 or -156)
     SpeedPanel.Size    = UDim2.new(1,-20,1, noSearch and -112 or -156)
     RebuildVisible()
 end
@@ -7378,7 +8525,421 @@ local _lastAnimCheck = 0
         updateFPSLimiterState()
     end)
 
-    -- Ghost Trails (Neon Visual Trail)
+
+    -- FPS Boost Toggle
+    local fpsBoostFrame = new("Frame",sc,{Size=UDim2.new(1,-10,0,60),BackgroundColor3=C.bg2,BackgroundTransparency=0.45,BorderSizePixel=0})
+    corner(fpsBoostFrame,8); stroke(fpsBoostFrame,C.glassBorder,1,0.6)
+
+    new("TextLabel",fpsBoostFrame,{Size=UDim2.new(1,-120,0,18),Position=UDim2.new(0,10,0,10),
+        BackgroundTransparency=1,Text="FPS Boost",TextColor3=C.text,TextSize=11,
+        Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left})
+
+    new("TextLabel",fpsBoostFrame,{Size=UDim2.new(1,-130,0,20),Position=UDim2.new(0,10,0,28),
+        BackgroundTransparency=1,Text="Aggressive optimization: shadows, lighting, particles, sounds, characters. +30-60% FPS.",
+        TextColor3=C.text3,TextSize=9,Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true})
+
+    local fpsBoostToggleBg = new("Frame",fpsBoostFrame,{Size=UDim2.new(0,44,0,22),Position=UDim2.new(1,-54,0,19),
+        BackgroundColor3=C.bg4,BorderSizePixel=0}); corner(fpsBoostToggleBg,11)
+    local fpsBoostToggleKnob = new("Frame",fpsBoostToggleBg,{
+        Size=UDim2.new(0,16,0,16),Position=UDim2.new(0,3,0,3),
+        BackgroundColor3=C.white,BorderSizePixel=0}); corner(fpsBoostToggleKnob,8)
+    local fpsBoostToggleBtn = new("TextButton",fpsBoostToggleBg,{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text=""})
+
+    local FPSBoostEnabled = false
+    local savedSettings = {}
+    local boostConnections = {}
+    local hiddenObjects = {}
+    local originalMaterials = {}
+
+    local function deepSave(tbl, key, getter)
+        local ok, val = pcall(getter)
+        if ok then tbl[key] = val end
+    end
+
+    local function applyFPSBoost(enable)
+        local Lighting = game:GetService("Lighting")
+        local RunService = game:GetService("RunService")
+        local Players = game:GetService("Players")
+        local SoundService = game:GetService("SoundService")
+        local Workspace = game:GetService("Workspace")
+        local Terrain = Workspace:FindFirstChildOfClass("Terrain")
+        local localPlayer = Players.LocalPlayer
+
+        if enable then
+            -- ===== CORE RENDERING =====
+            deepSave(savedSettings, "QualityLevel", function() return settings().Rendering.QualityLevel end)
+            deepSave(savedSettings, "GlobalShadows", function() return Lighting.GlobalShadows end)
+            deepSave(savedSettings, "Technology", function() return Lighting.Technology end)
+            deepSave(savedSettings, "OutdoorAmbient", function() return Lighting.OutdoorAmbient end)
+            deepSave(savedSettings, "Brightness", function() return Lighting.Brightness end)
+            deepSave(savedSettings, "EnvironmentDiffuseScale", function() return Lighting.EnvironmentDiffuseScale end)
+            deepSave(savedSettings, "EnvironmentSpecularScale", function() return Lighting.EnvironmentSpecularScale end)
+            deepSave(savedSettings, "ShadowSoftness", function() return Lighting.ShadowSoftness end)
+            deepSave(savedSettings, "GeographicLatitude", function() return Lighting.GeographicLatitude end)
+            deepSave(savedSettings, "ClockTime", function() return Lighting.ClockTime end)
+            deepSave(savedSettings, "Ambient", function() return Lighting.Ambient end)
+            deepSave(savedSettings, "ColorShift_Bottom", function() return Lighting.ColorShift_Bottom end)
+            deepSave(savedSettings, "ColorShift_Top", function() return Lighting.ColorShift_Top end)
+            deepSave(savedSettings, "ExposureCompensation", function() return Lighting.ExposureCompensation end)
+            deepSave(savedSettings, "FogStart", function() return Lighting.FogStart end)
+            deepSave(savedSettings, "FogEnd", function() return Lighting.FogEnd end)
+            deepSave(savedSettings, "FogColor", function() return Lighting.FogColor end)
+
+            pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
+            pcall(function() Lighting.GlobalShadows = false end)
+            pcall(function() Lighting.Technology = Enum.Technology.Compatibility end)
+            pcall(function() Lighting.OutdoorAmbient = Color3.fromRGB(128,128,128) end)
+            pcall(function() Lighting.Brightness = 1 end)
+            pcall(function() Lighting.EnvironmentDiffuseScale = 0 end)
+            pcall(function() Lighting.EnvironmentSpecularScale = 0 end)
+            pcall(function() Lighting.ShadowSoftness = 0 end)
+            pcall(function() Lighting.GeographicLatitude = 0 end)
+            pcall(function() Lighting.ClockTime = 12 end)
+            pcall(function() Lighting.Ambient = Color3.fromRGB(128,128,128) end)
+            pcall(function() Lighting.ColorShift_Bottom = Color3.fromRGB(0,0,0) end)
+            pcall(function() Lighting.ColorShift_Top = Color3.fromRGB(0,0,0) end)
+            pcall(function() Lighting.ExposureCompensation = 0 end)
+            pcall(function() Lighting.FogStart = 0 end)
+            pcall(function() Lighting.FogEnd = 100000 end)
+            pcall(function() Lighting.FogColor = Color3.fromRGB(192,192,192) end)
+
+            -- ===== ATMOSPHERE / SKY =====
+            for _, child in ipairs(Lighting:GetChildren()) do
+                if child:IsA("Atmosphere") then
+                    deepSave(savedSettings, "Atmosphere_" .. child.Name .. "_Density", function() return child.Density end)
+                    deepSave(savedSettings, "Atmosphere_" .. child.Name .. "_Haze", function() return child.Haze end)
+                    deepSave(savedSettings, "Atmosphere_" .. child.Name .. "_Glare", function() return child.Glare end)
+                    deepSave(savedSettings, "Atmosphere_" .. child.Name .. "_Offset", function() return child.Offset end)
+                    pcall(function() child.Density = 0 end)
+                    pcall(function() child.Haze = 0 end)
+                    pcall(function() child.Glare = 0 end)
+                    pcall(function() child.Offset = 0 end)
+                elseif child:IsA("Sky") then
+                    deepSave(savedSettings, "Sky_" .. child.Name .. "_StarCount", function() return child.StarCount end)
+                    pcall(function() child.StarCount = 0 end)
+                elseif child:IsA("PostEffect") then
+                    deepSave(savedSettings, "PostFX_" .. child.Name .. "_Enabled", function() return child.Enabled end)
+                    pcall(function() child.Enabled = false end)
+                end
+            end
+
+            -- ===== TERRAIN =====
+            if Terrain then
+                deepSave(savedSettings, "TerrainDecoration", function() return Terrain.Decoration end)
+                deepSave(savedSettings, "TerrainWaterWaveSize", function() return Terrain.WaterWaveSize end)
+                deepSave(savedSettings, "TerrainWaterWaveSpeed", function() return Terrain.WaterWaveSpeed end)
+                deepSave(savedSettings, "TerrainWaterReflectance", function() return Terrain.WaterReflectance end)
+                deepSave(savedSettings, "TerrainWaterTransparency", function() return Terrain.WaterTransparency end)
+                pcall(function() Terrain.Decoration = false end)
+                pcall(function() Terrain.WaterWaveSize = 0 end)
+                pcall(function() Terrain.WaterWaveSpeed = 0 end)
+                pcall(function() Terrain.WaterReflectance = 0 end)
+                pcall(function() Terrain.WaterTransparency = 1 end)
+            end
+
+            -- ===== WORKSPACE STREAMING =====
+            deepSave(savedSettings, "StreamingMode", function() return Workspace.StreamingMode end)
+            deepSave(savedSettings, "StreamingMinRadius", function() return Workspace.StreamingMinRadius end)
+            deepSave(savedSettings, "StreamingTargetRadius", function() return Workspace.StreamingTargetRadius end)
+            deepSave(savedSettings, "StreamingPauseMode", function() return Workspace.StreamingPauseMode end)
+            pcall(function() Workspace.StreamingMode = Enum.StreamingMode.LowPriority end)
+            pcall(function() Workspace.StreamingMinRadius = 64 end)
+            pcall(function() Workspace.StreamingTargetRadius = 256 end)
+            pcall(function() Workspace.StreamingPauseMode = Enum.StreamingPauseMode.Default end)
+
+            -- ===== SOUND SERVICE =====
+            deepSave(savedSettings, "SoundService_RolloffScale", function() return SoundService.RolloffScale end)
+            pcall(function() SoundService.RolloffScale = 5 end)
+
+            -- ===== AGGRESSIVE DESCENDANT SCAN =====
+            local batch = {}
+            local batchSize = 0
+            local function flushBatch()
+                for _, entry in ipairs(batch) do
+                    local obj, action, key, val = entry[1], entry[2], entry[3], entry[4]
+                    if obj and obj.Parent then
+                        pcall(function()
+                            if action == "prop" then
+                                obj[key] = val
+                            elseif action == "parent" then
+                                obj.Parent = val
+                            elseif action == "trans" then
+                                obj.Transparency = val
+                            end
+                        end)
+                    end
+                end
+                batch = {}
+                batchSize = 0
+            end
+            local function queue(obj, action, key, val)
+                table.insert(batch, {obj, action, key, val})
+                batchSize = batchSize + 1
+                if batchSize >= 300 then
+                    flushBatch()
+                    task.wait()
+                end
+            end
+
+            local function scanObject(obj)
+                if obj:IsA("BasePart") then
+                    if obj.CastShadow then
+                        queue(obj, "prop", "CastShadow", false)
+                    end
+                    if obj:IsA("MeshPart") then
+                        if obj.RenderFidelity ~= Enum.RenderFidelity.Performance then
+                            originalMaterials[obj] = obj.RenderFidelity
+                            queue(obj, "prop", "RenderFidelity", Enum.RenderFidelity.Performance)
+                        end
+                        if obj.DoubleSided then
+                            queue(obj, "prop", "DoubleSided", false)
+                        end
+                    end
+                    if obj:IsA("UnionOperation") then
+                        if obj.RenderFidelity ~= Enum.RenderFidelity.Performance then
+                            originalMaterials[obj] = obj.RenderFidelity
+                            queue(obj, "prop", "RenderFidelity", Enum.RenderFidelity.Performance)
+                        end
+                    end
+                    if obj.Reflectance > 0 then
+                        queue(obj, "prop", "Reflectance", 0)
+                    end
+                elseif obj:IsA("ParticleEmitter") then
+                    hiddenObjects[obj] = {Enabled = obj.Enabled, Rate = obj.Rate}
+                    queue(obj, "prop", "Enabled", false)
+                    queue(obj, "prop", "Rate", 0)
+                elseif obj:IsA("Trail") then
+                    hiddenObjects[obj] = {Enabled = obj.Enabled}
+                    queue(obj, "prop", "Enabled", false)
+                elseif obj:IsA("Beam") then
+                    hiddenObjects[obj] = {Enabled = obj.Enabled}
+                    queue(obj, "prop", "Enabled", false)
+                elseif obj:IsA("Fire") then
+                    hiddenObjects[obj] = {Enabled = obj.Enabled}
+                    queue(obj, "prop", "Enabled", false)
+                elseif obj:IsA("Smoke") then
+                    hiddenObjects[obj] = {Enabled = obj.Enabled}
+                    queue(obj, "prop", "Enabled", false)
+                elseif obj:IsA("Sparkles") then
+                    hiddenObjects[obj] = {Enabled = obj.Enabled}
+                    queue(obj, "prop", "Enabled", false)
+                elseif obj:IsA("Explosion") then
+                    queue(obj, "prop", "Visible", false)
+                elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                    if obj.Transparency < 1 then
+                        hiddenObjects[obj] = {Transparency = obj.Transparency}
+                        queue(obj, "prop", "Transparency", math.min(obj.Transparency + 0.35, 0.95))
+                    end
+                elseif obj:IsA("BillboardGui") then
+                    if obj.AlwaysOnTop == false then
+                        hiddenObjects[obj] = {Enabled = obj.Enabled}
+                        queue(obj, "prop", "Enabled", false)
+                    end
+                elseif obj:IsA("SurfaceGui") then
+                    hiddenObjects[obj] = {Enabled = obj.Enabled}
+                    queue(obj, "prop", "Enabled", false)
+                elseif obj:IsA("Sound") then
+                    if obj.Looped and obj.Playing and obj.Parent and obj.Parent ~= SoundService then
+                        hiddenObjects[obj] = {Volume = obj.Volume}
+                        queue(obj, "prop", "Volume", 0)
+                    end
+                elseif obj:IsA("Humanoid") and obj.Parent then
+                    local owner = Players:GetPlayerFromCharacter(obj.Parent)
+                    if owner and owner ~= localPlayer then
+                        queue(obj, "prop", "DisplayDistanceType", Enum.HumanoidDisplayDistanceType.None)
+                        local head = obj.Parent:FindFirstChild("Head")
+                        if head then
+                            for _, face in ipairs(head:GetChildren()) do
+                                if face:IsA("Decal") then
+                                    hiddenObjects[face] = {Transparency = face.Transparency}
+                                    queue(face, "prop", "Transparency", 1)
+                                end
+                            end
+                        end
+                        for _, acc in ipairs(obj.Parent:GetChildren()) do
+                            if acc:IsA("Accessory") then
+                                local handle = acc:FindFirstChild("Handle")
+                                if handle and handle:IsA("BasePart") then
+                                    if handle.Transparency < 1 then
+                                        hiddenObjects[handle] = {Transparency = handle.Transparency}
+                                        queue(handle, "prop", "Transparency", 1)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            -- Scan workspace in chunks
+            task.spawn(function()
+                local all = Workspace:GetDescendants()
+                for i = 1, #all do
+                    scanObject(all[i])
+                    if i % 400 == 0 then task.wait() end
+                end
+                flushBatch()
+
+                -- Watch for new objects
+                local newConn = Workspace.DescendantAdded:Connect(function(obj)
+                    task.wait(0.05)
+                    scanObject(obj)
+                    flushBatch()
+                end)
+                table.insert(boostConnections, newConn)
+
+                -- Periodic re-scan for objects that got re-enabled
+                task.delay(3, function()
+                    local c = RunService.Heartbeat:Connect(function()
+                        if not FPSBoostEnabled then return end
+                        for obj, state in pairs(hiddenObjects) do
+                            if obj and obj.Parent then
+                                if obj:IsA("ParticleEmitter") and obj.Enabled then
+                                    pcall(function() obj.Enabled = false end)
+                                elseif obj:IsA("Trail") and obj.Enabled then
+                                    pcall(function() obj.Enabled = false end)
+                                elseif obj:IsA("Beam") and obj.Enabled then
+                                    pcall(function() obj.Enabled = false end)
+                                elseif obj:IsA("Fire") and obj.Enabled then
+                                    pcall(function() obj.Enabled = false end)
+                                elseif obj:IsA("Smoke") and obj.Enabled then
+                                    pcall(function() obj.Enabled = false end)
+                                elseif obj:IsA("Sparkles") and obj.Enabled then
+                                    pcall(function() obj.Enabled = false end)
+                                end
+                            end
+                        end
+                    end)
+                    table.insert(boostConnections, c)
+                end)
+            end)
+
+            -- ===== GARBAGE COLLECT =====
+            pcall(function() collectgarbage("collect") end)
+            pcall(function() collectgarbage("setpause", 120) end)
+
+            -- ===== DISABLE EXPENSIVE CAMERA EFFECTS =====
+            deepSave(savedSettings, "CameraFieldOfView", function() return Workspace.CurrentCamera.FieldOfView end)
+            pcall(function() Workspace.CurrentCamera.FieldOfView = math.min(Workspace.CurrentCamera.FieldOfView, 70) end)
+
+        else
+            -- ===== RESTORE ALL SETTINGS =====
+            local Lighting = game:GetService("Lighting")
+            local SoundService = game:GetService("SoundService")
+            local Workspace = game:GetService("Workspace")
+            local Terrain = Workspace:FindFirstChildOfClass("Terrain")
+
+            -- Disconnect watchers
+            for _, conn in ipairs(boostConnections) do
+                pcall(function() conn:Disconnect() end)
+            end
+            boostConnections = {}
+
+            -- Restore lighting
+            if savedSettings.QualityLevel then pcall(function() settings().Rendering.QualityLevel = savedSettings.QualityLevel end) end
+            if savedSettings.GlobalShadows ~= nil then pcall(function() Lighting.GlobalShadows = savedSettings.GlobalShadows end) end
+            if savedSettings.Technology then pcall(function() Lighting.Technology = savedSettings.Technology end) end
+            if savedSettings.OutdoorAmbient then pcall(function() Lighting.OutdoorAmbient = savedSettings.OutdoorAmbient end) end
+            if savedSettings.Brightness then pcall(function() Lighting.Brightness = savedSettings.Brightness end) end
+            if savedSettings.EnvironmentDiffuseScale ~= nil then pcall(function() Lighting.EnvironmentDiffuseScale = savedSettings.EnvironmentDiffuseScale end) end
+            if savedSettings.EnvironmentSpecularScale ~= nil then pcall(function() Lighting.EnvironmentSpecularScale = savedSettings.EnvironmentSpecularScale end) end
+            if savedSettings.ShadowSoftness ~= nil then pcall(function() Lighting.ShadowSoftness = savedSettings.ShadowSoftness end) end
+            if savedSettings.GeographicLatitude ~= nil then pcall(function() Lighting.GeographicLatitude = savedSettings.GeographicLatitude end) end
+            if savedSettings.ClockTime then pcall(function() Lighting.ClockTime = savedSettings.ClockTime end) end
+            if savedSettings.Ambient then pcall(function() Lighting.Ambient = savedSettings.Ambient end) end
+            if savedSettings.ColorShift_Bottom then pcall(function() Lighting.ColorShift_Bottom = savedSettings.ColorShift_Bottom end) end
+            if savedSettings.ColorShift_Top then pcall(function() Lighting.ColorShift_Top = savedSettings.ColorShift_Top end) end
+            if savedSettings.ExposureCompensation ~= nil then pcall(function() Lighting.ExposureCompensation = savedSettings.ExposureCompensation end) end
+            if savedSettings.FogStart ~= nil then pcall(function() Lighting.FogStart = savedSettings.FogStart end) end
+            if savedSettings.FogEnd ~= nil then pcall(function() Lighting.FogEnd = savedSettings.FogEnd end) end
+            if savedSettings.FogColor then pcall(function() Lighting.FogColor = savedSettings.FogColor end) end
+
+            -- Restore atmosphere/sky/postfx
+            for _, child in ipairs(Lighting:GetChildren()) do
+                if child:IsA("Atmosphere") then
+                    local d = savedSettings["Atmosphere_" .. child.Name .. "_Density"]
+                    local h = savedSettings["Atmosphere_" .. child.Name .. "_Haze"]
+                    local g = savedSettings["Atmosphere_" .. child.Name .. "_Glare"]
+                    local o = savedSettings["Atmosphere_" .. child.Name .. "_Offset"]
+                    if d ~= nil then pcall(function() child.Density = d end) end
+                    if h ~= nil then pcall(function() child.Haze = h end) end
+                    if g ~= nil then pcall(function() child.Glare = g end) end
+                    if o ~= nil then pcall(function() child.Offset = o end) end
+                elseif child:IsA("Sky") then
+                    local s = savedSettings["Sky_" .. child.Name .. "_StarCount"]
+                    if s ~= nil then pcall(function() child.StarCount = s end) end
+                elseif child:IsA("PostEffect") then
+                    local e = savedSettings["PostFX_" .. child.Name .. "_Enabled"]
+                    if e ~= nil then pcall(function() child.Enabled = e end) end
+                end
+            end
+
+            -- Restore terrain
+            if Terrain then
+                if savedSettings.TerrainDecoration ~= nil then pcall(function() Terrain.Decoration = savedSettings.TerrainDecoration end) end
+                if savedSettings.TerrainWaterWaveSize ~= nil then pcall(function() Terrain.WaterWaveSize = savedSettings.TerrainWaterWaveSize end) end
+                if savedSettings.TerrainWaterWaveSpeed ~= nil then pcall(function() Terrain.WaterWaveSpeed = savedSettings.TerrainWaterWaveSpeed end) end
+                if savedSettings.TerrainWaterReflectance ~= nil then pcall(function() Terrain.WaterReflectance = savedSettings.TerrainWaterReflectance end) end
+                if savedSettings.TerrainWaterTransparency ~= nil then pcall(function() Terrain.WaterTransparency = savedSettings.TerrainWaterTransparency end) end
+            end
+
+            -- Restore workspace
+            if savedSettings.StreamingMode then pcall(function() Workspace.StreamingMode = savedSettings.StreamingMode end) end
+            if savedSettings.StreamingMinRadius then pcall(function() Workspace.StreamingMinRadius = savedSettings.StreamingMinRadius end) end
+            if savedSettings.StreamingTargetRadius then pcall(function() Workspace.StreamingTargetRadius = savedSettings.StreamingTargetRadius end) end
+            if savedSettings.StreamingPauseMode then pcall(function() Workspace.StreamingPauseMode = savedSettings.StreamingPauseMode end) end
+
+            -- Restore sound
+            if savedSettings.SoundService_RolloffScale ~= nil then pcall(function() SoundService.RolloffScale = savedSettings.SoundService_RolloffScale end) end
+
+            -- Restore hidden objects
+            for obj, state in pairs(hiddenObjects) do
+                if obj and obj.Parent then
+                    for k, v in pairs(state) do
+                        pcall(function() obj[k] = v end)
+                    end
+                end
+            end
+            hiddenObjects = {}
+
+            -- Restore render fidelity
+            for obj, state in pairs(originalMaterials) do
+                if obj and obj.Parent then
+                    pcall(function() obj.RenderFidelity = state end)
+                end
+            end
+            originalMaterials = {}
+
+            -- Restore camera
+            if savedSettings.CameraFieldOfView then
+                pcall(function() Workspace.CurrentCamera.FieldOfView = savedSettings.CameraFieldOfView end)
+            end
+
+            -- Reset GC
+            pcall(function() collectgarbage("setpause", 200) end)
+
+            savedSettings = {}
+        end
+    end
+
+    local function updateFPSBoostState()
+        if FPSBoostEnabled then
+            tw(fpsBoostToggleBg, 0.2, {BackgroundColor3 = C.green}):Play()
+            tw(fpsBoostToggleKnob, 0.2, {Position = UDim2.new(1,-18,0,3)}):Play()
+            applyFPSBoost(true)
+            Notify("FPS Boost ON", "Aggressive optimization active. Shadows, lighting, particles, sounds & characters optimized.", 4)
+        else
+            tw(fpsBoostToggleBg, 0.2, {BackgroundColor3 = C.bg4}):Play()
+            tw(fpsBoostToggleKnob, 0.2, {Position = UDim2.new(0,3,0,3)}):Play()
+            applyFPSBoost(false)
+            Notify("FPS Boost OFF", "All visual settings restored.", 2)
+        end
+    end
+    fpsBoostToggleBtn.MouseButton1Click:Connect(function()
+        FPSBoostEnabled = not FPSBoostEnabled
+        updateFPSBoostState()
+    end)
+-- Ghost Trails (Neon Visual Trail)
     local ghostFrame = new("Frame",sc,{Size=UDim2.new(1,-10,0,60),BackgroundColor3=C.bg2,BackgroundTransparency=0.45,BorderSizePixel=0})
     corner(ghostFrame,8); stroke(ghostFrame,C.glassBorder,1,0.6)
 
