@@ -1,22 +1,3 @@
-pcall(function() loadstring("if getgenv().LPH_NO_VIRTUALIZE == nil then getgenv().LPH_NO_VIRTUALIZE = function(f) return f end end")() end)
-pcall(function() loadstring("if getgenv().LPH_JIT == nil then getgenv().LPH_JIT = function(f) return f end end")() end)
-pcall(function() loadstring("if getgenv().LPH_JIT_MAX == nil then getgenv().LPH_JIT_MAX = function(f) return f end end")() end)
-
-if not LPS_OBFUSCATED then
-    LPS_OBFUSCATED = false
-    LPS_CRASH         = function() error("LPS_CRASH triggered", 2) end
-    LPS_ENCRYPT       = function(v) return v end
-    LPS_EQ            = function(a, b) return a == b end
-    LPH_NO_VIRTUALIZE = function(f) return f end
-    LPH_NO_UPVALUES   = function(f) return f end
-    LPS_GET_ARGUMENTS = function(...) return {...} end
-end
-
--- Ensure these are always defined locally if still nil
-pcall(function() loadstring("if getgenv().LPH_NO_VIRTUALIZE == nil then getgenv().LPH_NO_VIRTUALIZE = function(f) return f end end")() end)
-pcall(function() loadstring("if getgenv().LPH_JIT == nil then getgenv().LPH_JIT = function(f) return f end end")() end)
-pcall(function() loadstring("if getgenv().LPH_JIT_MAX == nil then getgenv().LPH_JIT_MAX = function(f) return f end end")() end)
-
 if _G._HaloReanimConns then
     for k, conn in pairs(_G._HaloReanimConns) do
         if conn then
